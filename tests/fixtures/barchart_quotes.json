@@ -1,0 +1,7 @@
+{
+  "status": {"code": 200, "message": "Success."},
+  "results": [
+    {"symbol": "CLZ25", "lastPrice": 74.50, "settlement": 74.35},
+    {"symbol": "CLF26", "lastPrice": 73.80, "settlement": 73.65}
+  ]
+}

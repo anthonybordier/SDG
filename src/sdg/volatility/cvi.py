@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import numpy as np
 import cvxpy as cp
-from scipy.stats import norm
 
+from sdg.core.black_scholes import d1 as _bs_d1_core, vega as _bs_vega_core
 from sdg.volatility.types import CVIConfig, CVIResult, ExpiryData
 from sdg.volatility.bspline import (
     build_knot_vector,
@@ -41,8 +41,7 @@ from sdg.volatility.bspline import (
 
 def _bs_d1(forward: float, strikes: np.ndarray, vols: np.ndarray, T: float) -> np.ndarray:
     """Compute Black-Scholes d1."""
-    k = np.log(strikes / forward)
-    return (-k + 0.5 * vols**2 * T) / (vols * np.sqrt(T))
+    return _bs_d1_core(forward, strikes, vols, T)
 
 
 def _bs_vega(
@@ -52,12 +51,8 @@ def _bs_vega(
     T: float,
     df: float,
 ) -> np.ndarray:
-    """Compute Black-Scholes vega (derivative of price w.r.t. volatility).
-
-    Vega = F * df * sqrt(T) * phi(d1)
-    """
-    d1 = _bs_d1(forward, strikes, vols, T)
-    return forward * df * np.sqrt(T) * norm.pdf(d1)
+    """Compute Black-Scholes vega (derivative of price w.r.t. volatility)."""
+    return _bs_vega_core(forward, strikes, vols, T, df)
 
 
 def estimate_anchor_atm_vol(expiry: ExpiryData) -> float:

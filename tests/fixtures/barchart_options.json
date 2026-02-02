@@ -1,0 +1,25 @@
+{
+  "status": {"code": 200, "message": "Success."},
+  "results": [
+    {"symbol": "CLZ25|70C", "strike": 65.0, "bid": 10.50, "ask": 10.80, "type": "Call", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLZ25|70P", "strike": 65.0, "bid": 0.30, "ask": 0.45, "type": "Put", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLZ25|72C", "strike": 68.0, "bid": 8.20, "ask": 8.50, "type": "Call", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLZ25|72P", "strike": 68.0, "bid": 0.95, "ask": 1.15, "type": "Put", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLZ25|75C", "strike": 72.0, "bid": 5.10, "ask": 5.40, "type": "Call", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLZ25|75P", "strike": 72.0, "bid": 2.80, "ask": 3.05, "type": "Put", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLZ25|78C", "strike": 76.0, "bid": 2.60, "ask": 2.85, "type": "Call", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLZ25|78P", "strike": 76.0, "bid": 5.30, "ask": 5.55, "type": "Put", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLZ25|80C", "strike": 80.0, "bid": 0.80, "ask": 1.00, "type": "Call", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLZ25|80P", "strike": 80.0, "bid": 8.50, "ask": 8.75, "type": "Put", "expirationDate": "2025-11-17", "underlyingSymbol": "CLZ25"},
+    {"symbol": "CLF26|65C", "strike": 65.0, "bid": 9.80, "ask": 10.20, "type": "Call", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"},
+    {"symbol": "CLF26|65P", "strike": 65.0, "bid": 0.80, "ask": 1.10, "type": "Put", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"},
+    {"symbol": "CLF26|68C", "strike": 68.0, "bid": 7.50, "ask": 7.90, "type": "Call", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"},
+    {"symbol": "CLF26|68P", "strike": 68.0, "bid": 1.90, "ask": 2.20, "type": "Put", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"},
+    {"symbol": "CLF26|72C", "strike": 72.0, "bid": 4.60, "ask": 5.00, "type": "Call", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"},
+    {"symbol": "CLF26|72P", "strike": 72.0, "bid": 3.50, "ask": 3.85, "type": "Put", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"},
+    {"symbol": "CLF26|76C", "strike": 76.0, "bid": 2.30, "ask": 2.65, "type": "Call", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"},
+    {"symbol": "CLF26|76P", "strike": 76.0, "bid": 6.10, "ask": 6.45, "type": "Put", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"},
+    {"symbol": "CLF26|80C", "strike": 80.0, "bid": 1.00, "ask": 1.30, "type": "Call", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"},
+    {"symbol": "CLF26|80P", "strike": 80.0, "bid": 9.50, "ask": 9.85, "type": "Put", "expirationDate": "2025-12-17", "underlyingSymbol": "CLF26"}
+  ]
+}

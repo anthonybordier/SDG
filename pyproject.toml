@@ -9,6 +9,7 @@ dependencies = [
     "scipy",
     "cvxpy",
     "clarabel",
+    "matplotlib>=3.10.8",
 ]
 
 [tool.uv]
