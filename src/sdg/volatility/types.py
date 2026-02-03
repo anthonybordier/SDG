@@ -61,7 +61,7 @@ class CVIConfig:
         solver: CVXPY solver to use. Default "SCS".
     """
 
-    n_knots: int = 11
+    n_knots: int = 21
     z_range: float = 8.0
     regularization: float = 0.05
     n_calendar_strikes: int = 20
