@@ -65,6 +65,8 @@ class CVIConfig:
               beyond), following the paper's Appendix C example.
             - "market": Include knots at market z-points for exact interpolation.
               Additional evenly-spaced knots (up to n_knots) are added.
+            - "market_only": Minimal set with only market z-points and edge knots.
+              Fastest option while maintaining exact interpolation at market strikes.
     """
 
     n_knots: int = 21

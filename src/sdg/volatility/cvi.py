@@ -307,14 +307,8 @@ class CVICalibrator:
             knots.append(z_range)
             return np.unique(np.sort(np.array(knots)))
 
-        elif spacing == "market":
-            # Market z-points plus evenly spaced base knots
-            n = self.config.n_knots
-            if n % 2 == 0:
-                n += 1
-            base_knots = np.linspace(-z_range, z_range, n)
-
-            # Add knots at market z-points for each expiry
+        elif spacing in ("market", "market_only"):
+            # Collect market z-points for each expiry
             market_z = []
             for exp in expiries:
                 sigma_star = exp.anchor_atm_vol
@@ -323,17 +317,27 @@ class CVICalibrator:
                 z_arr = k_arr / (sigma_star * np.sqrt(T))
                 market_z.extend(z_arr)
 
-            # Combine base knots with market z-points, clipped to z_range
+            # Clip to z_range
             market_z = np.array(market_z)
             market_z = market_z[(market_z >= -z_range) & (market_z <= z_range)]
 
-            all_knots = np.concatenate([base_knots, market_z, [-z_range, z_range]])
+            if spacing == "market":
+                # Market z-points plus evenly spaced base knots
+                n = self.config.n_knots
+                if n % 2 == 0:
+                    n += 1
+                base_knots = np.linspace(-z_range, z_range, n)
+                all_knots = np.concatenate([base_knots, market_z, [-z_range, z_range]])
+            else:
+                # market_only: minimal set with only market z-points and edge knots
+                all_knots = np.concatenate([market_z, [-z_range, z_range]])
+
             return np.unique(np.sort(all_knots))
 
         else:
             raise ValueError(
                 f"Unknown knot_spacing '{spacing}'. "
-                "Use 'uniform', 'atm_dense', or 'market'."
+                "Use 'uniform', 'atm_dense', 'market', or 'market_only'."
             )
 
     # ------------------------------------------------------------------
