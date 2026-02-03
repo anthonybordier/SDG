@@ -54,6 +54,11 @@ class CVIConfig:
         max_iterations: Maximum number of butterfly linearization
             iterations (Section 3.3.4). Typically 2 suffices.
         variance_floor: Minimum allowed variance for positivity constraints.
+        calendar_penalty: Penalty weight for soft calendar constraints.
+            If > 0, calendar constraints are soft (penalty in objective).
+            If = 0, calendar constraints are hard (may fail on arbitrageable data).
+            If < 0 (e.g. -1), calendar constraints are completely disabled.
+        solver: CVXPY solver to use. Default "SCS".
     """
 
     n_knots: int = 11
@@ -64,6 +69,8 @@ class CVIConfig:
     n_positivity_points: int = 20
     max_iterations: int = 2
     variance_floor: float = 1e-6
+    calendar_penalty: float = 1.0
+    solver: str = "SCS"
 
 
 @dataclass

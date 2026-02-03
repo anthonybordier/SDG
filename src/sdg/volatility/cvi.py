@@ -160,8 +160,10 @@ def _compute_s_min(v: float, k: float, T: float, sigma_star: float) -> float:
     This prevents negative probability density in the left tail where
     the convexity is zero.
     """
+    # Clamp v to positive to handle edge cases from optimization
+    v = max(v, 1e-12)
     vT = v * T
-    sqrt_vT = np.sqrt(max(vT, 1e-12))
+    sqrt_vT = np.sqrt(vT)
     sqrt_term = np.sqrt(1.0 + vT / 4.0)
     denom = k**2 - (v**2 * T**2) / 4.0 - vT
     if abs(denom) < 1e-15:
@@ -175,8 +177,10 @@ def _compute_s_max(v: float, k: float, T: float, sigma_star: float) -> float:
     This prevents negative probability density in the right tail where
     the convexity is zero.
     """
+    # Clamp v to positive to handle edge cases from optimization
+    v = max(v, 1e-12)
     vT = v * T
-    sqrt_vT = np.sqrt(max(vT, 1e-12))
+    sqrt_vT = np.sqrt(vT)
     sqrt_term = np.sqrt(1.0 + vT / 4.0)
     denom = k**2 - (v**2 * T**2) / 4.0 - vT
     if abs(denom) < 1e-15:
@@ -434,9 +438,10 @@ class CVICalibrator:
         # ----------------------------------------------------------
         # No-calendar-spread-arbitrage constraints (Section 3.3.3)
         # ----------------------------------------------------------
-        if m > 1:
+        # Skip if calendar_penalty < 0 (disabled) or only one expiry
+        if m > 1 and self.config.calendar_penalty >= 0:
             self._add_calendar_constraints(
-                constraints, alphas, expiries, breakpoints, knot_vector,
+                constraints, objective_terms, alphas, expiries, breakpoints, knot_vector,
             )
 
         # ----------------------------------------------------------
@@ -444,7 +449,35 @@ class CVICalibrator:
         # ----------------------------------------------------------
         objective = cp.Minimize(cp.sum(objective_terms))
         problem = cp.Problem(objective, constraints)
-        problem.solve(solver=cp.CLARABEL, verbose=False)
+
+        # Get solver from config with fallback options
+        solver_map = {
+            "CLARABEL": cp.CLARABEL,
+            "OSQP": cp.OSQP,
+            "ECOS": cp.ECOS,
+            "SCS": cp.SCS,
+        }
+        # Define fallback order: try primary solver first, then fallbacks
+        primary_solver = solver_map.get(self.config.solver, cp.SCS)
+        fallback_solvers = [cp.SCS, cp.CLARABEL, cp.ECOS, cp.OSQP]
+
+        solvers_to_try = [primary_solver] + [s for s in fallback_solvers if s != primary_solver]
+
+        last_error = None
+        for solver in solvers_to_try:
+            try:
+                problem.solve(solver=solver, verbose=False)
+                if problem.status in ("optimal", "optimal_inaccurate"):
+                    break
+                last_error = RuntimeError(f"CVI optimization failed: {problem.status}")
+            except Exception as e:
+                last_error = e
+                continue
+        else:
+            # All solvers failed
+            raise RuntimeError(
+                f"CVI optimization failed with all solvers. Last error: {last_error}"
+            )
 
         if problem.status not in ("optimal", "optimal_inaccurate"):
             raise RuntimeError(
@@ -460,6 +493,7 @@ class CVICalibrator:
     def _add_calendar_constraints(
         self,
         constraints: list,
+        objective_terms: list,
         alphas: list[cp.Variable],
         expiries: list[ExpiryData],
         breakpoints: np.ndarray,
@@ -469,10 +503,18 @@ class CVICalibrator:
 
         For any fixed strike-to-forward ratio, total variance must increase
         with time (Eq. 3). Also enforces tail constraints (Eq. 4).
+
+        Behavior depends on config.calendar_penalty:
+        - If > 0: soft constraints (penalty in objective). This allows the
+          solver to find a feasible solution even when input data has
+          calendar arbitrage.
+        - If = 0: hard constraints (may fail on arbitrageable data).
+        - If < 0: this method is not called (calendar constraints disabled).
         """
         m = len(expiries)
         r = self.config.n_calendar_strikes
         z_grid = np.linspace(breakpoints[0], breakpoints[-1], r)
+        use_soft = self.config.calendar_penalty > 0
 
         # First derivative at edge knots (for tail constraints)
         B_d1_z0 = eval_basis(np.array([breakpoints[0]]), knot_vector, 3, deriv=1)[0]
@@ -498,9 +540,17 @@ class CVICalibrator:
 
             # v(K, T_j) * T_j <= v(K * F_{j+1}/F_j, T_{j+1}) * T_{j+1}
             # This is expressed as a vectorized constraint
-            constraints.append(
-                T_j * (B_j @ alphas[j]) <= T_j1 * (B_j1 @ alphas[j + 1])
-            )
+            w_j = T_j * (B_j @ alphas[j])
+            w_j1 = T_j1 * (B_j1 @ alphas[j + 1])
+
+            if use_soft:
+                # Soft constraint: penalize violations
+                # violation = max(0, w_j - w_j1)
+                calendar_violation = cp.sum(cp.square(cp.pos(w_j - w_j1)))
+                objective_terms.append(self.config.calendar_penalty * calendar_violation)
+            else:
+                # Hard constraint
+                constraints.append(w_j <= w_j1)
 
             # --- Tail constraints (Eq. 4) ---
             # Left tail: s * sigma_star * sqrt(T) must not decrease too fast
@@ -509,13 +559,24 @@ class CVICalibrator:
             coeff_j1 = np.sqrt(T_j1) / sig_j1
 
             # s at z_0 is negative: magnitude decreasing means algebraic value increasing
-            constraints.append(
-                coeff_j * (B_d1_z0 @ alphas[j]) >= coeff_j1 * (B_d1_z0 @ alphas[j + 1])
-            )
+            left_tail_j = coeff_j * (B_d1_z0 @ alphas[j])
+            left_tail_j1 = coeff_j1 * (B_d1_z0 @ alphas[j + 1])
+
             # s at z_{n-1} is positive: increasing
-            constraints.append(
-                coeff_j * (B_d1_zn @ alphas[j]) <= coeff_j1 * (B_d1_zn @ alphas[j + 1])
-            )
+            right_tail_j = coeff_j * (B_d1_zn @ alphas[j])
+            right_tail_j1 = coeff_j1 * (B_d1_zn @ alphas[j + 1])
+
+            if use_soft:
+                # Soft tail constraints
+                # Left: left_tail_j >= left_tail_j1  =>  penalize pos(left_tail_j1 - left_tail_j)
+                # Right: right_tail_j <= right_tail_j1  =>  penalize pos(right_tail_j - right_tail_j1)
+                left_violation = cp.square(cp.pos(left_tail_j1 - left_tail_j))
+                right_violation = cp.square(cp.pos(right_tail_j - right_tail_j1))
+                objective_terms.append(self.config.calendar_penalty * (left_violation + right_violation))
+            else:
+                # Hard constraints
+                constraints.append(left_tail_j >= left_tail_j1)
+                constraints.append(right_tail_j <= right_tail_j1)
 
     # ------------------------------------------------------------------
     # Butterfly arbitrage constraints (Section 3.3.4, Appendix B)
