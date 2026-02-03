@@ -59,9 +59,9 @@ class CVIConfig:
             If = 0, calendar constraints are hard (may fail on arbitrageable data).
             If < 0 (e.g. -1), calendar constraints are completely disabled.
         solver: CVXPY solver to use. Default "SCS".
-        knots_at_market: If True, place knots at market z-points for exact
-            interpolation. Additional evenly-spaced knots are added based on
-            n_knots. Default True.
+        knots_at_market: If True, include knots at market z-points for exact
+            interpolation at market strikes. Additional evenly-spaced knots
+            (up to n_knots) are added for smooth interpolation between points.
     """
 
     n_knots: int = 21

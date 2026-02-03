@@ -264,38 +264,37 @@ class CVICalibrator:
     # ------------------------------------------------------------------
 
     def _build_breakpoints(self, expiries: list[ExpiryData]) -> np.ndarray:
-        """Build breakpoints for the B-spline.
+        """Build breakpoints, optionally including market z-points.
 
-        If knots_at_market is True, includes z-coordinates of all market
-        strikes to enable exact interpolation. Otherwise uses evenly spaced
-        knots.
+        If config.knots_at_market is True, knots are placed at the z-coordinates
+        of market strikes (for each expiry) plus evenly spaced knots for smooth
+        interpolation. This allows exact interpolation at market strikes.
         """
         z_range = self.config.z_range
 
         # Start with evenly spaced knots
         n = self.config.n_knots
         if n % 2 == 0:
-            n += 1
+            n += 1  # Round up to odd to include z = 0
         base_knots = np.linspace(-z_range, z_range, n)
 
         if not self.config.knots_at_market:
             return base_knots
 
-        # Add market z-points from all expiries
+        # Add knots at market z-points for each expiry
         market_z = []
         for exp in expiries:
             sigma_star = exp.anchor_atm_vol
             T = exp.time_to_expiry
-            F = exp.forward
-            # Convert strikes to z-space
-            k = np.log(exp.strikes / F)
-            z = k / (sigma_star * np.sqrt(T))
-            # Only include points within z_range
-            z_valid = z[(z >= -z_range) & (z <= z_range)]
-            market_z.extend(z_valid)
+            k_arr = np.log(exp.strikes / exp.forward)
+            z_arr = k_arr / (sigma_star * np.sqrt(T))
+            market_z.extend(z_arr)
 
-        # Combine and sort unique breakpoints
-        all_knots = np.concatenate([base_knots, market_z])
+        # Combine base knots with market z-points, clipped to z_range
+        market_z = np.array(market_z)
+        market_z = market_z[(market_z >= -z_range) & (market_z <= z_range)]
+
+        all_knots = np.concatenate([base_knots, market_z, [-z_range, z_range]])
         breakpoints = np.unique(np.sort(all_knots))
 
         return breakpoints
