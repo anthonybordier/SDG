@@ -264,40 +264,77 @@ class CVICalibrator:
     # ------------------------------------------------------------------
 
     def _build_breakpoints(self, expiries: list[ExpiryData]) -> np.ndarray:
-        """Build breakpoints, optionally including market z-points.
+        """Build breakpoints based on the configured knot_spacing strategy.
 
-        If config.knots_at_market is True, knots are placed at the z-coordinates
-        of market strikes (for each expiry) plus evenly spaced knots for smooth
-        interpolation. This allows exact interpolation at market strikes.
+        Strategies:
+        - "uniform": Evenly spaced knots from -z_range to +z_range.
+        - "atm_dense": Denser knots near ATM (step of 1 for |z|<=2, step of 2
+          beyond), following the paper's Appendix C example.
+        - "market": Include knots at market z-points for exact interpolation,
+          plus evenly spaced base knots for smooth interpolation.
         """
         z_range = self.config.z_range
+        spacing = self.config.knot_spacing
 
-        # Start with evenly spaced knots
-        n = self.config.n_knots
-        if n % 2 == 0:
-            n += 1  # Round up to odd to include z = 0
-        base_knots = np.linspace(-z_range, z_range, n)
+        if spacing == "uniform":
+            # Evenly spaced knots
+            n = self.config.n_knots
+            if n % 2 == 0:
+                n += 1  # Round up to odd to include z = 0
+            return np.linspace(-z_range, z_range, n)
 
-        if not self.config.knots_at_market:
-            return base_knots
+        elif spacing == "atm_dense":
+            # ATM-dense pattern from Appendix C (page 29):
+            # Step of 1 for |z| <= 2, step of 2 beyond
+            # Example for z_range=8: [-8, -6, -4, -2, -1, 0, 1, 2, 4, 6, 8]
+            knots = []
+            # Left wing: step of 2 from -z_range to -2
+            z = -z_range
+            while z < -2.0:
+                knots.append(z)
+                z += 2.0
+            # Near ATM: step of 1 from -2 to 2
+            for z in np.arange(-2.0, 2.0 + 0.5, 1.0):
+                knots.append(z)
+            # Right wing: step of 2 from 2 to z_range
+            z = 4.0
+            while z <= z_range:
+                knots.append(z)
+                z += 2.0
+            # Ensure edge knots are included
+            knots = list(set(knots))
+            knots.append(-z_range)
+            knots.append(z_range)
+            return np.unique(np.sort(np.array(knots)))
 
-        # Add knots at market z-points for each expiry
-        market_z = []
-        for exp in expiries:
-            sigma_star = exp.anchor_atm_vol
-            T = exp.time_to_expiry
-            k_arr = np.log(exp.strikes / exp.forward)
-            z_arr = k_arr / (sigma_star * np.sqrt(T))
-            market_z.extend(z_arr)
+        elif spacing == "market":
+            # Market z-points plus evenly spaced base knots
+            n = self.config.n_knots
+            if n % 2 == 0:
+                n += 1
+            base_knots = np.linspace(-z_range, z_range, n)
 
-        # Combine base knots with market z-points, clipped to z_range
-        market_z = np.array(market_z)
-        market_z = market_z[(market_z >= -z_range) & (market_z <= z_range)]
+            # Add knots at market z-points for each expiry
+            market_z = []
+            for exp in expiries:
+                sigma_star = exp.anchor_atm_vol
+                T = exp.time_to_expiry
+                k_arr = np.log(exp.strikes / exp.forward)
+                z_arr = k_arr / (sigma_star * np.sqrt(T))
+                market_z.extend(z_arr)
 
-        all_knots = np.concatenate([base_knots, market_z, [-z_range, z_range]])
-        breakpoints = np.unique(np.sort(all_knots))
+            # Combine base knots with market z-points, clipped to z_range
+            market_z = np.array(market_z)
+            market_z = market_z[(market_z >= -z_range) & (market_z <= z_range)]
 
-        return breakpoints
+            all_knots = np.concatenate([base_knots, market_z, [-z_range, z_range]])
+            return np.unique(np.sort(all_knots))
+
+        else:
+            raise ValueError(
+                f"Unknown knot_spacing '{spacing}'. "
+                "Use 'uniform', 'atm_dense', or 'market'."
+            )
 
     # ------------------------------------------------------------------
     # QP solve

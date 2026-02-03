@@ -40,7 +40,7 @@ class CVIConfig:
 
     Attributes:
         n_knots: Total number of cubic spline knots (rounded up to odd
-            to ensure z=0 is included).
+            to ensure z=0 is included). Used when knot_spacing="uniform".
         z_range: Range of normalized log-moneyness for edge knots.
             Edge knots are placed at -z_range and +z_range.
         regularization: Strike regularization factor lambda (Section 3.2).
@@ -59,9 +59,12 @@ class CVIConfig:
             If = 0, calendar constraints are hard (may fail on arbitrageable data).
             If < 0 (e.g. -1), calendar constraints are completely disabled.
         solver: CVXPY solver to use. Default "SCS".
-        knots_at_market: If True, include knots at market z-points for exact
-            interpolation at market strikes. Additional evenly-spaced knots
-            (up to n_knots) are added for smooth interpolation between points.
+        knot_spacing: Knot placement strategy:
+            - "uniform": Evenly spaced knots from -z_range to +z_range.
+            - "atm_dense": Denser knots near ATM (step of 1 for |z|<=2, step of 2
+              beyond), following the paper's Appendix C example.
+            - "market": Include knots at market z-points for exact interpolation.
+              Additional evenly-spaced knots (up to n_knots) are added.
     """
 
     n_knots: int = 21
@@ -74,7 +77,7 @@ class CVIConfig:
     variance_floor: float = 1e-6
     calendar_penalty: float = 1.0
     solver: str = "SCS"
-    knots_at_market: bool = True
+    knot_spacing: str = "market"
 
 
 @dataclass
