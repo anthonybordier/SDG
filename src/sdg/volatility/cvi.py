@@ -233,7 +233,7 @@ class CVICalibrator:
                 exp.anchor_atm_vol = estimate_anchor_atm_vol(exp)
 
         # Build knot structure
-        breakpoints = self._build_breakpoints()
+        breakpoints = self._build_breakpoints(expiries)
         knot_vector = build_knot_vector(breakpoints)
         M = build_dual_transform(breakpoints, knot_vector)
 
@@ -263,13 +263,42 @@ class CVICalibrator:
     # Knot construction
     # ------------------------------------------------------------------
 
-    def _build_breakpoints(self) -> np.ndarray:
-        """Build evenly spaced breakpoints with z=0 guaranteed to be included."""
+    def _build_breakpoints(self, expiries: list[ExpiryData]) -> np.ndarray:
+        """Build breakpoints for the B-spline.
+
+        If knots_at_market is True, includes z-coordinates of all market
+        strikes to enable exact interpolation. Otherwise uses evenly spaced
+        knots.
+        """
+        z_range = self.config.z_range
+
+        # Start with evenly spaced knots
         n = self.config.n_knots
-        # Round up to odd to include z = 0
         if n % 2 == 0:
             n += 1
-        return np.linspace(-self.config.z_range, self.config.z_range, n)
+        base_knots = np.linspace(-z_range, z_range, n)
+
+        if not self.config.knots_at_market:
+            return base_knots
+
+        # Add market z-points from all expiries
+        market_z = []
+        for exp in expiries:
+            sigma_star = exp.anchor_atm_vol
+            T = exp.time_to_expiry
+            F = exp.forward
+            # Convert strikes to z-space
+            k = np.log(exp.strikes / F)
+            z = k / (sigma_star * np.sqrt(T))
+            # Only include points within z_range
+            z_valid = z[(z >= -z_range) & (z <= z_range)]
+            market_z.extend(z_valid)
+
+        # Combine and sort unique breakpoints
+        all_knots = np.concatenate([base_knots, market_z])
+        breakpoints = np.unique(np.sort(all_knots))
+
+        return breakpoints
 
     # ------------------------------------------------------------------
     # QP solve
