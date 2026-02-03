@@ -106,6 +106,10 @@ class CVIResult:
             Each element may have different length.
         breakpoints_list: Per-expiry breakpoints for independent mode.
         knot_vector_list: Per-expiry knot vectors for independent mode.
+        calibrated_vols: List of calibrated vol arrays at market strikes, one per
+            expiry. Same shape as expiry.strikes for each expiry.
+        calibration_errors: List of calibration error arrays (calibrated - mid),
+            one per expiry. NaN where mid is not available.
     """
 
     bspline_weights: np.ndarray | None
@@ -116,3 +120,5 @@ class CVIResult:
     bspline_weights_list: list[np.ndarray] | None = None
     breakpoints_list: list[np.ndarray] | None = None
     knot_vector_list: list[np.ndarray] | None = None
+    calibrated_vols: list[np.ndarray] | None = None
+    calibration_errors: list[np.ndarray] | None = None

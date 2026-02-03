@@ -252,12 +252,23 @@ class CVICalibrator:
         )
 
         # Subsequent iterations: linearized butterfly constraints
+        # Build mask of flat smiles (skip butterfly for these)
+        flat_mask = [self._is_smile_flat(exp) for exp in expiries]
+
         for _ in range(self.config.max_iterations - 1):
+            if all(flat_mask):
+                break  # All smiles flat, skip butterfly iteration
             butterfly_ref = weights.copy()
             weights = self._solve_qp(
                 expiries, breakpoints, knot_vector, M,
                 butterfly_ref=butterfly_ref,
+                flat_mask=flat_mask,
             )
+
+        # Compute calibrated vols and errors at market strikes
+        calibrated_vols, calibration_errors = self._compute_calibration_diagnostics(
+            expiries, weights, breakpoints, knot_vector,
+        )
 
         return CVIResult(
             bspline_weights=weights,
@@ -265,6 +276,8 @@ class CVICalibrator:
             knot_vector=knot_vector,
             expiries=expiries,
             config=self.config,
+            calibrated_vols=calibrated_vols,
+            calibration_errors=calibration_errors,
         )
 
     def _calibrate_independent(self, expiries: list[ExpiryData]) -> CVIResult:
@@ -284,17 +297,26 @@ class CVICalibrator:
                 [exp], breakpoints, knot_vector, M, butterfly_ref=None,
             )
 
-            # Subsequent iterations
+            # Subsequent iterations: skip if smile is flat
+            is_flat = self._is_smile_flat(exp)
             for _ in range(self.config.max_iterations - 1):
+                if is_flat:
+                    break
                 butterfly_ref = weights.copy()
                 weights = self._solve_qp(
                     [exp], breakpoints, knot_vector, M,
                     butterfly_ref=butterfly_ref,
+                    flat_mask=[False],  # Not flat, apply butterfly
                 )
 
             weights_list.append(weights[0])  # Extract single expiry weights
             breakpoints_list.append(breakpoints)
             knot_vector_list.append(knot_vector)
+
+        # Compute calibrated vols and errors at market strikes
+        calibrated_vols, calibration_errors = self._compute_calibration_diagnostics_independent(
+            expiries, weights_list, breakpoints_list, knot_vector_list,
+        )
 
         return CVIResult(
             bspline_weights=None,
@@ -305,6 +327,8 @@ class CVICalibrator:
             bspline_weights_list=weights_list,
             breakpoints_list=breakpoints_list,
             knot_vector_list=knot_vector_list,
+            calibrated_vols=calibrated_vols,
+            calibration_errors=calibration_errors,
         )
 
     # ------------------------------------------------------------------
@@ -389,6 +413,161 @@ class CVICalibrator:
             )
 
     # ------------------------------------------------------------------
+    # Flat smile detection
+    # ------------------------------------------------------------------
+
+    def _is_smile_flat(
+        self,
+        exp: ExpiryData,
+        vol_range_threshold: float = 0.005,
+    ) -> bool:
+        """Check if a smile is flat (low vol range).
+
+        Flat smiles can cause numerical instability in butterfly linearization
+        because the reference solution has near-zero curvature, making the
+        linearized constraints poorly conditioned.
+
+        Args:
+            exp: Market data for one expiry.
+            vol_range_threshold: Maximum vol range (max - min) to be considered flat.
+                Default 0.5% (0.005). Smiles with less vol variation than this are
+                effectively flat and butterfly constraints add no value.
+
+        Returns:
+            True if the smile is flat and butterfly iteration should be skipped.
+        """
+        valid = ~np.isnan(exp.bid_vols) & ~np.isnan(exp.ask_vols)
+        if not np.any(valid):
+            return True  # No valid data, skip butterfly
+
+        mid_vols = (exp.bid_vols[valid] + exp.ask_vols[valid]) / 2.0
+        vol_range = mid_vols.max() - mid_vols.min()
+        return vol_range < vol_range_threshold
+
+    def _all_smiles_flat(
+        self,
+        expiries: list[ExpiryData],
+        weights: np.ndarray,
+        breakpoints: np.ndarray,
+        knot_vector: np.ndarray,
+    ) -> bool:
+        """Check if all smiles are flat.
+
+        Args:
+            expiries: Market data per expiry.
+            weights: Current B-spline weights (unused, kept for API compatibility).
+            breakpoints: Knot breakpoints (unused, kept for API compatibility).
+            knot_vector: Augmented B-spline knot vector (unused).
+
+        Returns:
+            True if all smiles are flat and butterfly iteration should be skipped.
+        """
+        return all(self._is_smile_flat(exp) for exp in expiries)
+
+    # ------------------------------------------------------------------
+    # Calibration diagnostics
+    # ------------------------------------------------------------------
+
+    def _compute_calibration_diagnostics(
+        self,
+        expiries: list[ExpiryData],
+        weights: np.ndarray,
+        breakpoints: np.ndarray,
+        knot_vector: np.ndarray,
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        """Compute calibrated vols and errors at market strikes (joint mode).
+
+        Args:
+            expiries: Market data per expiry.
+            weights: B-spline weights, shape (m, n_basis).
+            breakpoints: Knot breakpoints in z-space.
+            knot_vector: Augmented B-spline knot vector.
+
+        Returns:
+            Tuple of (calibrated_vols, calibration_errors), each a list of arrays.
+        """
+        calibrated_vols = []
+        calibration_errors = []
+
+        for j, exp in enumerate(expiries):
+            sigma_star = exp.anchor_atm_vol
+            T = exp.time_to_expiry
+            F = exp.forward
+
+            # Convert strikes to z-space
+            k = np.log(exp.strikes / F)
+            z = k / (sigma_star * np.sqrt(T))
+
+            # Evaluate variance
+            B = eval_basis_extrap(z, knot_vector, breakpoints)
+            variance = B @ weights[j]
+            variance = np.maximum(variance, 1e-12)
+            cal_vols = np.sqrt(variance)
+            calibrated_vols.append(cal_vols)
+
+            # Compute mid vols and errors
+            mid_vols = np.where(
+                np.isnan(exp.bid_vols) | np.isnan(exp.ask_vols),
+                np.nan,
+                (exp.bid_vols + exp.ask_vols) / 2.0,
+            )
+            errors = cal_vols - mid_vols
+            calibration_errors.append(errors)
+
+        return calibrated_vols, calibration_errors
+
+    def _compute_calibration_diagnostics_independent(
+        self,
+        expiries: list[ExpiryData],
+        weights_list: list[np.ndarray],
+        breakpoints_list: list[np.ndarray],
+        knot_vector_list: list[np.ndarray],
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        """Compute calibrated vols and errors at market strikes (independent mode).
+
+        Args:
+            expiries: Market data per expiry.
+            weights_list: Per-expiry B-spline weights.
+            breakpoints_list: Per-expiry breakpoints.
+            knot_vector_list: Per-expiry knot vectors.
+
+        Returns:
+            Tuple of (calibrated_vols, calibration_errors), each a list of arrays.
+        """
+        calibrated_vols = []
+        calibration_errors = []
+
+        for j, exp in enumerate(expiries):
+            sigma_star = exp.anchor_atm_vol
+            T = exp.time_to_expiry
+            F = exp.forward
+            weights = weights_list[j]
+            breakpoints = breakpoints_list[j]
+            knot_vector = knot_vector_list[j]
+
+            # Convert strikes to z-space
+            k = np.log(exp.strikes / F)
+            z = k / (sigma_star * np.sqrt(T))
+
+            # Evaluate variance
+            B = eval_basis_extrap(z, knot_vector, breakpoints)
+            variance = B @ weights
+            variance = np.maximum(variance, 1e-12)
+            cal_vols = np.sqrt(variance)
+            calibrated_vols.append(cal_vols)
+
+            # Compute mid vols and errors
+            mid_vols = np.where(
+                np.isnan(exp.bid_vols) | np.isnan(exp.ask_vols),
+                np.nan,
+                (exp.bid_vols + exp.ask_vols) / 2.0,
+            )
+            errors = cal_vols - mid_vols
+            calibration_errors.append(errors)
+
+        return calibrated_vols, calibration_errors
+
+    # ------------------------------------------------------------------
     # QP solve
     # ------------------------------------------------------------------
 
@@ -399,6 +578,7 @@ class CVICalibrator:
         knot_vector: np.ndarray,
         M: np.ndarray,
         butterfly_ref: np.ndarray | None,
+        flat_mask: list[bool] | None = None,
     ) -> np.ndarray:
         """Build and solve the CVXPY quadratic program.
 
@@ -409,6 +589,8 @@ class CVICalibrator:
             M: Dual transformation matrix (cubic_params = M @ bspline_weights).
             butterfly_ref: B-spline weights from previous iteration for
                 linearized butterfly constraints, or None for first iteration.
+            flat_mask: Per-expiry mask indicating which smiles are flat and should
+                skip butterfly constraints (True = flat, skip constraints).
 
         Returns:
             Calibrated B-spline weights, shape (m, n_basis).
@@ -546,7 +728,9 @@ class CVICalibrator:
             constraints.append(lee_factor * (B_d1_zn @ alphas[j]) <= 1.0 - 0.01)
 
             # --- Linearized no-butterfly-arbitrage constraints (Section 3.3.4) ---
-            if butterfly_ref is not None:
+            # Skip for flat smiles to avoid numerical instability
+            skip_butterfly = flat_mask is not None and flat_mask[j]
+            if butterfly_ref is not None and not skip_butterfly:
                 self._add_butterfly_constraints(
                     constraints, alphas[j], j, exp,
                     breakpoints, knot_vector, butterfly_ref[j],
@@ -713,6 +897,23 @@ class CVICalibrator:
 
         These enforce PDF >= 0 by linearizing the non-convex butterfly
         condition at the reference solution from the previous iteration.
+
+        Note on flat smiles:
+            For nearly flat smiles (vol range < 0.5%), the linearization can
+            become numerically unstable because the reference curvature is
+            near zero, making the beta coefficients poorly conditioned. The
+            calibrator automatically detects flat smiles and skips butterfly
+            constraints for them (see _is_smile_flat).
+
+        Potential improvements for butterfly linearization:
+            1. Adaptive beta scaling: Scale beta coefficients by smile curvature
+               to prevent numerical instability when curvature is small.
+            2. Soft butterfly constraints: Add butterfly violations as a penalty
+               term instead of hard constraints (similar to calendar_penalty).
+            3. Regularized linearization: Add a small regularization term to the
+               beta computation to prevent division by near-zero values.
+            4. Trust region: Limit how far the solution can move from the
+               reference in each iteration to improve convergence.
         """
         v_star = exp.anchor_atm_vol**2
         sigma_star = exp.anchor_atm_vol

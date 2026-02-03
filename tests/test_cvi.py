@@ -320,7 +320,7 @@ class TestCVIFullSurface:
         config = CVIConfig(
             knot_spacing="market",
             calibration_mode="independent",
-            max_iterations=1,  # Skip butterfly iteration (can fail on flat smiles)
+            max_iterations=2,  # Flat smiles auto-detected and skipped
         )
         calibrator = CVICalibrator(config)
         result = calibrator.calibrate(ko_expiries)
@@ -349,3 +349,56 @@ class TestCVIFullSurface:
 
         overall_max = max(max_errors)
         assert overall_max < 0.005, f"Max error {overall_max:.2%} exceeds 0.5%"
+
+    def test_calibration_diagnostics_populated(self, ko_expiries):
+        """CVIResult should have calibrated_vols and calibration_errors."""
+        config = CVIConfig(
+            knot_spacing="market",
+            calendar_penalty=-1,
+            max_iterations=1,
+        )
+        calibrator = CVICalibrator(config)
+        result = calibrator.calibrate(ko_expiries)
+
+        # Check diagnostics are populated
+        assert result.calibrated_vols is not None
+        assert result.calibration_errors is not None
+        assert len(result.calibrated_vols) == len(ko_expiries)
+        assert len(result.calibration_errors) == len(ko_expiries)
+
+        # Check shapes match market strikes
+        for i, exp in enumerate(result.expiries):
+            assert len(result.calibrated_vols[i]) == len(exp.strikes)
+            assert len(result.calibration_errors[i]) == len(exp.strikes)
+
+    def test_flat_smile_detection_skips_butterfly(self, ko_expiries):
+        """Flat smiles should skip butterfly iteration automatically."""
+        # Find a flat expiry (vol range < 0.5%)
+        flat_idx = None
+        for i, exp in enumerate(ko_expiries):
+            valid = ~np.isnan(exp.bid_vols) & ~np.isnan(exp.ask_vols)
+            if np.any(valid):
+                mid_vols = (exp.bid_vols[valid] + exp.ask_vols[valid]) / 2.0
+                vol_range = mid_vols.max() - mid_vols.min()
+                if vol_range < 0.005:
+                    flat_idx = i
+                    break
+
+        if flat_idx is None:
+            pytest.skip("No flat expiry found in fixture")
+
+        # Calibrate with max_iterations=2
+        config = CVIConfig(
+            knot_spacing="market",
+            calibration_mode="independent",
+            max_iterations=2,
+        )
+        calibrator = CVICalibrator(config)
+        result = calibrator.calibrate([ko_expiries[flat_idx]])
+
+        # Should succeed with low error despite butterfly iteration being requested
+        errors = result.calibration_errors[0]
+        valid = ~np.isnan(errors)
+        if np.any(valid):
+            max_error = np.max(np.abs(errors[valid]))
+            assert max_error < 0.01, f"Flat smile error {max_error:.2%} too high"
