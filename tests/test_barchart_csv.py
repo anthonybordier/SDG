@@ -16,12 +16,12 @@ class TestParseCSV:
 
         # Check first record
         r = records[0]
-        assert r["strike"] == 65.0
-        assert r["bid"] == 10.50
-        assert r["ask"] == 10.80
+        assert r["strike"] == 3800.0
+        assert r["bid"] == 450.0
+        assert r["ask"] == 470.0
         assert r["type"] == "Call"
         assert r["expirationDate"] == "11/17/2025"
-        assert r["underlyingSymbol"] == "CLZ25"
+        assert r["underlyingSymbol"] == "KOZ25"
 
     def test_field_values_types(self):
         records = parse_csv(FIXTURES / "barchart_options.csv")
@@ -33,18 +33,18 @@ class TestParseCSV:
 
     def test_bom_handling(self, tmp_path):
         csv_content = "\ufeffSymbol,Strike,Bid,Ask,Type,Expiration Date,Underlying Symbol\n"
-        csv_content += "CLZ25|70C,65.0,10.50,10.80,Call,11/17/2025,CLZ25\n"
+        csv_content += "KOZ25|4000C,3800.0,450.0,470.0,Call,11/17/2025,KOZ25\n"
         p = tmp_path / "bom_test.csv"
         p.write_text(csv_content, encoding="utf-8-sig")
 
         records = parse_csv(p)
         assert len(records) == 1
-        assert records[0]["strike"] == 65.0
+        assert records[0]["strike"] == 3800.0
 
     def test_missing_values(self, tmp_path):
         csv_content = "Symbol,Strike,Bid,Ask,Type,Expiration Date,Underlying Symbol\n"
-        csv_content += "CLZ25|70C,65.0,N/A,-,Call,11/17/2025,CLZ25\n"
-        csv_content += "CLZ25|70P,65.0,,0.45,Put,11/17/2025,CLZ25\n"
+        csv_content += "KOZ25|4000C,3800.0,N/A,-,Call,11/17/2025,KOZ25\n"
+        csv_content += "KOZ25|4000P,3800.0,,25.0,Put,11/17/2025,KOZ25\n"
         p = tmp_path / "missing_test.csv"
         p.write_text(csv_content)
 
@@ -53,7 +53,7 @@ class TestParseCSV:
         assert records[0]["bid"] is None
         assert records[0]["ask"] is None
         assert records[1]["bid"] is None
-        assert records[1]["ask"] == 0.45
+        assert records[1]["ask"] == 25.0
 
     def test_empty_file(self, tmp_path):
         p = tmp_path / "empty.csv"

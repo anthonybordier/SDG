@@ -1,7 +1,7 @@
 {
   "status": {"code": 200, "message": "Success."},
   "results": [
-    {"symbol": "CLZ25", "lastPrice": 74.50, "settlement": 74.35},
-    {"symbol": "CLF26", "lastPrice": 73.80, "settlement": 73.65}
+    {"symbol": "KOZ25", "lastPrice": 4210.0, "settlement": 4200.0},
+    {"symbol": "KOF26", "lastPrice": 4160.0, "settlement": 4150.0}
   ]
 }

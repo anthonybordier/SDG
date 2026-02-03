@@ -72,10 +72,10 @@ def fetch_futures_options(
     """Fetch futures options data from Barchart OnDemand API.
 
     Args:
-        root: Commodity root symbol (e.g. "CL").
+        root: Commodity root symbol (e.g. "KO").
         api_key: Barchart API key. Falls back to BARCHART_API_KEY env var.
-        exchange: Exchange filter (e.g. "CME").
-        contract: Specific contract month (e.g. "CLZ24").
+        exchange: Exchange filter (e.g. "BMD").
+        contract: Specific contract month (e.g. "KOZ24").
         fields: Comma-separated fields to request.
 
     Returns:
@@ -105,7 +105,7 @@ def fetch_futures_quote(
     """Fetch futures quote data from Barchart OnDemand API.
 
     Args:
-        symbols: List of futures symbols (e.g. ["CLZ24", "CLF25"]).
+        symbols: List of futures symbols (e.g. ["KOZ24", "KOF25"]).
         api_key: Barchart API key. Falls back to BARCHART_API_KEY env var.
         fields: Comma-separated fields to request.
 

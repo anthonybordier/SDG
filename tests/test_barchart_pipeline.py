@@ -42,7 +42,7 @@ class TestLoadFromApi:
         mock_quotes_fn.return_value = mock_quotes
 
         expiries = load_from_api(
-            "CL", api_key="test-key", valuation_date=date(2025, 6, 1),
+            "KO", api_key="test-key", valuation_date=date(2025, 6, 1),
         )
         assert len(expiries) == 2
         assert all(isinstance(e, ExpiryData) for e in expiries)
@@ -51,7 +51,7 @@ class TestLoadFromApi:
 
 class TestLoadFromCsv:
     def test_returns_expiry_data(self):
-        forwards = {"CLZ25": 74.35, "CLF26": 73.65}
+        forwards = {"KOZ25": 4200.0, "KOF26": 4150.0}
         expiries = load_from_csv(
             FIXTURES / "barchart_options.csv",
             forwards,
@@ -69,7 +69,7 @@ class TestCalibrateSurface:
         mock_quotes_fn.return_value = mock_quotes
 
         result = calibrate_surface(
-            "CL",
+            "KO",
             api_key="test-key",
             valuation_date=date(2025, 6, 1),
             cvi_config=CVIConfig(n_knots=7, max_iterations=1),
@@ -78,7 +78,7 @@ class TestCalibrateSurface:
         assert len(result.expiries) == 2
 
     def test_csv_mode(self):
-        forwards = {"CLZ25": 74.35, "CLF26": 73.65}
+        forwards = {"KOZ25": 4200.0, "KOF26": 4150.0}
         result = calibrate_surface(
             csv_path=FIXTURES / "barchart_options.csv",
             forwards=forwards,
@@ -104,7 +104,7 @@ class TestCalibrateSurface:
 
         with pytest.raises(ValueError, match="No valid expiries"):
             calibrate_surface(
-                "CL",
+                "KO",
                 api_key="test-key",
                 valuation_date=date(2025, 6, 1),
             )

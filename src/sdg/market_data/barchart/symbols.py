@@ -10,7 +10,7 @@ class CommoditySpec:
     """Specification for a commodity futures contract.
 
     Attributes:
-        root: Root symbol (e.g. "CL", "NG").
+        root: Root symbol (e.g. "KO", "NG").
         exchange: Exchange code (e.g. "CME", "BMD").
         name: Human-readable name.
     """
@@ -37,7 +37,7 @@ def get_spec(root: str) -> CommoditySpec:
     """Look up a commodity specification by root symbol.
 
     Args:
-        root: Root symbol (e.g. "CL").
+        root: Root symbol (e.g. "KO").
 
     Returns:
         CommoditySpec for the given root.

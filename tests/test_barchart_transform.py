@@ -55,7 +55,7 @@ class TestBuildArraysFromRecords:
         strikes, call_bid, call_ask, put_bid, put_ask = build_arrays_from_records(records)
 
         assert len(strikes) == 5
-        np.testing.assert_array_equal(strikes, [65.0, 68.0, 72.0, 76.0, 80.0])
+        np.testing.assert_array_equal(strikes, [3800.0, 4000.0, 4200.0, 4400.0, 4600.0])
         assert np.isfinite(call_bid).all()
         assert np.isfinite(call_ask).all()
         assert np.isfinite(put_bid).all()
@@ -120,11 +120,11 @@ class TestTransformToExpiryList:
         # Should be sorted by T
         assert expiries[0].time_to_expiry < expiries[1].time_to_expiry
         # Check forward prices
-        np.testing.assert_almost_equal(expiries[0].forward, 74.35)
-        np.testing.assert_almost_equal(expiries[1].forward, 73.65)
+        np.testing.assert_almost_equal(expiries[0].forward, 4200.0)
+        np.testing.assert_almost_equal(expiries[1].forward, 4150.0)
 
     def test_with_dict_forwards(self, option_records):
-        forwards = {"CLZ25": 74.35, "CLF26": 73.65}
+        forwards = {"KOZ25": 4200.0, "KOF26": 4150.0}
         expiries = transform_to_expiry_list(
             option_records, forwards,
             valuation_date=date(2025, 6, 1),

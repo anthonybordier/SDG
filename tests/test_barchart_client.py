@@ -46,15 +46,15 @@ class TestFetchFuturesOptions:
     @patch("sdg.market_data.barchart.client.urllib.request.urlopen")
     def test_success(self, mock_urlopen_fn):
         mock_urlopen_fn.return_value = _mock_urlopen("barchart_options.json")
-        results = fetch_futures_options("CL", api_key="test-key")
+        results = fetch_futures_options("KO", api_key="test-key")
         assert len(results) == 20
-        assert results[0]["strike"] == 65.0
+        assert results[0]["strike"] == 3800.0
         mock_urlopen_fn.assert_called_once()
 
     @patch("sdg.market_data.barchart.client.urllib.request.urlopen")
     def test_api_key_in_url(self, mock_urlopen_fn):
         mock_urlopen_fn.return_value = _mock_urlopen("barchart_options.json")
-        fetch_futures_options("CL", api_key="my-secret-key")
+        fetch_futures_options("KO", api_key="my-secret-key")
         call_args = mock_urlopen_fn.call_args
         request = call_args[0][0]
         assert "my-secret-key" in request.full_url
@@ -66,19 +66,19 @@ class TestFetchFuturesOptions:
             "http://example.com", 403, "Forbidden", {}, None
         )
         with pytest.raises(BarchartAPIError, match="HTTP 403"):
-            fetch_futures_options("CL", api_key="test-key")
+            fetch_futures_options("KO", api_key="test-key")
 
     def test_missing_api_key(self, monkeypatch):
         monkeypatch.delenv("BARCHART_API_KEY", raising=False)
         with pytest.raises(ValueError, match="API key required"):
-            fetch_futures_options("CL")
+            fetch_futures_options("KO")
 
 
 class TestFetchFuturesQuote:
     @patch("sdg.market_data.barchart.client.urllib.request.urlopen")
     def test_success(self, mock_urlopen_fn):
         mock_urlopen_fn.return_value = _mock_urlopen("barchart_quotes.json")
-        results = fetch_futures_quote(["CLZ25", "CLF26"], api_key="test-key")
+        results = fetch_futures_quote(["KOZ25", "KOF26"], api_key="test-key")
         assert len(results) == 2
-        assert results[0]["symbol"] == "CLZ25"
-        assert results[0]["settlement"] == 74.35
+        assert results[0]["symbol"] == "KOZ25"
+        assert results[0]["settlement"] == 4200.0

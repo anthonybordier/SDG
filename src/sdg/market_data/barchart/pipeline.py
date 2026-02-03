@@ -28,7 +28,7 @@ def load_from_api(
     """Fetch option and futures data from Barchart API and transform to ExpiryData.
 
     Args:
-        root: Commodity root symbol (e.g. "CL").
+        root: Commodity root symbol (e.g. "KO").
         api_key: Barchart API key.
         exchange: Exchange filter.
         contract: Specific contract month.
