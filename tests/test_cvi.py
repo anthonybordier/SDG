@@ -1,9 +1,16 @@
 """Tests for the CVI volatility surface calibrator."""
 
+import json
+from datetime import date
+from pathlib import Path
+
 import numpy as np
+import pytest
 
 from sdg.volatility.types import ExpiryData, CVIConfig
 from sdg.volatility.cvi import CVICalibrator, evaluate_vol, evaluate_total_variance
+
+FIXTURES = Path(__file__).parent / "fixtures"
 from sdg.volatility.bspline import (
     build_knot_vector,
     eval_basis,
@@ -220,3 +227,90 @@ class TestCVIMultiExpiry:
         assert not np.any(violations), (
             f"Calendar spread arbitrage at {np.sum(violations)} strikes"
         )
+
+
+# ---------------------------------------------------------------------------
+# Full surface calibration tests (Barchart KO fixtures)
+# ---------------------------------------------------------------------------
+
+class TestCVIFullSurface:
+    """Test CVI calibration on full Barchart KO surface (22 expiries, 880 options)."""
+
+    @pytest.fixture
+    def ko_expiries(self):
+        """Load KO Palm Oil expiries from Barchart fixtures (first 5 for speed)."""
+        from sdg.market_data.barchart.pipeline import load_from_csv
+
+        with open(FIXTURES / "ko_quotes_20260203.json") as f:
+            data = json.load(f)
+            forwards = data["forwards"]
+            valuation_date = date.fromisoformat(data["valuation_date"])
+
+        expiries = load_from_csv(
+            FIXTURES / "ko_options_20260203.csv",
+            forwards,
+            valuation_date=valuation_date,
+            rate=0.03,
+            min_strikes=3,
+        )
+        # Use first 5 expiries for faster tests
+        return expiries[:5]
+
+    def test_market_knots_exact_interpolation(self, ko_expiries):
+        """With market knots and no calendar constraints, error should be ~0%."""
+        config = CVIConfig(
+            knot_spacing="market",
+            calendar_penalty=-1,  # Disable calendar constraints
+            max_iterations=2,
+        )
+        calibrator = CVICalibrator(config)
+        result = calibrator.calibrate(ko_expiries)
+
+        # Check that we calibrated all expiries
+        assert len(result.expiries) == len(ko_expiries)
+
+        # Check interpolation error at market strikes for each expiry
+        max_errors = []
+        for i, exp in enumerate(result.expiries):
+            cal_vols = evaluate_vol(result, exp.strikes, i)
+            mid_vols = np.where(
+                np.isnan(exp.bid_vols) | np.isnan(exp.ask_vols),
+                np.nan,
+                (exp.bid_vols + exp.ask_vols) / 2.0,
+            )
+            valid = ~np.isnan(mid_vols)
+            if np.any(valid):
+                errors = np.abs(cal_vols[valid] - mid_vols[valid])
+                max_errors.append(errors.max())
+
+        # With market knots, max error should be very small (< 0.5%)
+        overall_max = max(max_errors)
+        assert overall_max < 0.005, f"Max error {overall_max:.2%} exceeds 0.5%"
+
+    def test_market_only_knots_low_error(self, ko_expiries):
+        """With market_only knots, error should still be low."""
+        config = CVIConfig(
+            knot_spacing="market_only",
+            calendar_penalty=-1,
+            max_iterations=2,
+        )
+        calibrator = CVICalibrator(config)
+        result = calibrator.calibrate(ko_expiries)
+
+        # Check interpolation error
+        max_errors = []
+        for i, exp in enumerate(result.expiries):
+            cal_vols = evaluate_vol(result, exp.strikes, i)
+            mid_vols = np.where(
+                np.isnan(exp.bid_vols) | np.isnan(exp.ask_vols),
+                np.nan,
+                (exp.bid_vols + exp.ask_vols) / 2.0,
+            )
+            valid = ~np.isnan(mid_vols)
+            if np.any(valid):
+                errors = np.abs(cal_vols[valid] - mid_vols[valid])
+                max_errors.append(errors.max())
+
+        # With market_only knots, max error should be < 1%
+        overall_max = max(max_errors)
+        assert overall_max < 0.01, f"Max error {overall_max:.2%} exceeds 1%"
