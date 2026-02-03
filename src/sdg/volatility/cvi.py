@@ -232,7 +232,15 @@ class CVICalibrator:
             if exp.anchor_atm_vol is None:
                 exp.anchor_atm_vol = estimate_anchor_atm_vol(exp)
 
-        # Build knot structure
+        # Dispatch based on calibration mode
+        if self.config.calibration_mode == "independent":
+            return self._calibrate_independent(expiries)
+        else:
+            return self._calibrate_joint(expiries)
+
+    def _calibrate_joint(self, expiries: list[ExpiryData]) -> CVIResult:
+        """Calibrate all expiries jointly in a single QP."""
+        # Build knot structure (shared across all expiries)
         breakpoints = self._build_breakpoints(expiries)
         knot_vector = build_knot_vector(breakpoints)
         M = build_dual_transform(breakpoints, knot_vector)
@@ -257,6 +265,46 @@ class CVICalibrator:
             knot_vector=knot_vector,
             expiries=expiries,
             config=self.config,
+        )
+
+    def _calibrate_independent(self, expiries: list[ExpiryData]) -> CVIResult:
+        """Calibrate each expiry independently in separate QPs."""
+        weights_list = []
+        breakpoints_list = []
+        knot_vector_list = []
+
+        for exp in expiries:
+            # Build knot structure for this expiry only
+            breakpoints = self._build_breakpoints([exp])
+            knot_vector = build_knot_vector(breakpoints)
+            M = build_dual_transform(breakpoints, knot_vector)
+
+            # First iteration
+            weights = self._solve_qp(
+                [exp], breakpoints, knot_vector, M, butterfly_ref=None,
+            )
+
+            # Subsequent iterations
+            for _ in range(self.config.max_iterations - 1):
+                butterfly_ref = weights.copy()
+                weights = self._solve_qp(
+                    [exp], breakpoints, knot_vector, M,
+                    butterfly_ref=butterfly_ref,
+                )
+
+            weights_list.append(weights[0])  # Extract single expiry weights
+            breakpoints_list.append(breakpoints)
+            knot_vector_list.append(knot_vector)
+
+        return CVIResult(
+            bspline_weights=None,
+            breakpoints=None,
+            knot_vector=None,
+            expiries=expiries,
+            config=self.config,
+            bspline_weights_list=weights_list,
+            breakpoints_list=breakpoints_list,
+            knot_vector_list=knot_vector_list,
         )
 
     # ------------------------------------------------------------------
@@ -759,17 +807,28 @@ def evaluate_vol(
         Array of implied volatilities (sigma, not variance).
     """
     exp = result.expiries[expiry_index]
-    weights = result.bspline_weights[expiry_index]
     sigma_star = exp.anchor_atm_vol
     T = exp.time_to_expiry
     F = exp.forward
+
+    # Get weights, knot_vector, breakpoints based on calibration mode
+    if result.bspline_weights_list is not None:
+        # Independent mode: per-expiry structures
+        weights = result.bspline_weights_list[expiry_index]
+        knot_vector = result.knot_vector_list[expiry_index]
+        breakpoints = result.breakpoints_list[expiry_index]
+    else:
+        # Joint mode: shared structures
+        weights = result.bspline_weights[expiry_index]
+        knot_vector = result.knot_vector
+        breakpoints = result.breakpoints
 
     # Convert strikes to normalized log-moneyness
     k = np.log(strikes / F)
     z = k / (sigma_star * np.sqrt(T))
 
     # Evaluate variance via B-spline (with linear extrapolation)
-    B = eval_basis_extrap(z, result.knot_vector, result.breakpoints)
+    B = eval_basis_extrap(z, knot_vector, breakpoints)
     variance = B @ weights
 
     # Variance should be positive; clip for numerical safety

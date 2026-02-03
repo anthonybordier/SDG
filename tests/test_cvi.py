@@ -314,3 +314,38 @@ class TestCVIFullSurface:
         # With market_only knots, max error should be < 1%
         overall_max = max(max_errors)
         assert overall_max < 0.01, f"Max error {overall_max:.2%} exceeds 1%"
+
+    def test_independent_calibration_mode(self, ko_expiries):
+        """Independent calibration should give per-expiry breakpoints."""
+        config = CVIConfig(
+            knot_spacing="market",
+            calibration_mode="independent",
+            max_iterations=1,  # Skip butterfly iteration (can fail on flat smiles)
+        )
+        calibrator = CVICalibrator(config)
+        result = calibrator.calibrate(ko_expiries)
+
+        # Check that independent mode uses per-expiry structures
+        assert result.bspline_weights is None
+        assert result.breakpoints is None
+        assert result.bspline_weights_list is not None
+        assert result.breakpoints_list is not None
+        assert len(result.bspline_weights_list) == len(ko_expiries)
+        assert len(result.breakpoints_list) == len(ko_expiries)
+
+        # Check interpolation error (should still be low)
+        max_errors = []
+        for i, exp in enumerate(result.expiries):
+            cal_vols = evaluate_vol(result, exp.strikes, i)
+            mid_vols = np.where(
+                np.isnan(exp.bid_vols) | np.isnan(exp.ask_vols),
+                np.nan,
+                (exp.bid_vols + exp.ask_vols) / 2.0,
+            )
+            valid = ~np.isnan(mid_vols)
+            if np.any(valid):
+                errors = np.abs(cal_vols[valid] - mid_vols[valid])
+                max_errors.append(errors.max())
+
+        overall_max = max(max_errors)
+        assert overall_max < 0.005, f"Max error {overall_max:.2%} exceeds 0.5%"

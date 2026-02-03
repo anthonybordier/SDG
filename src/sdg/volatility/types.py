@@ -67,6 +67,12 @@ class CVIConfig:
               Additional evenly-spaced knots (up to n_knots) are added.
             - "market_only": Minimal set with only market z-points and edge knots.
               Fastest option while maintaining exact interpolation at market strikes.
+        calibration_mode: How to calibrate multiple expiries:
+            - "joint": All expiries calibrated together in one QP (default).
+              Allows calendar spread constraints and uses shared breakpoints.
+            - "independent": Each expiry calibrated separately. Faster (smaller
+              problems), each expiry gets its own breakpoints. No calendar
+              constraints possible.
     """
 
     n_knots: int = 21
@@ -80,6 +86,7 @@ class CVIConfig:
     calendar_penalty: float = 1.0
     solver: str = "SCS"
     knot_spacing: str = "market"
+    calibration_mode: str = "joint"
 
 
 @dataclass
@@ -87,15 +94,25 @@ class CVIResult:
     """Result of a CVI calibration.
 
     Attributes:
-        bspline_weights: B-spline weights per expiry, shape (m, n_basis).
-        breakpoints: Cubic spline breakpoints (knots) in z-space.
-        knot_vector: Augmented B-spline knot vector.
+        bspline_weights: B-spline weights per expiry. For joint mode, shape
+            (m, n_basis). For independent mode, use bspline_weights_list instead.
+        breakpoints: Cubic spline breakpoints (knots) in z-space. Shared across
+            expiries in joint mode. For independent mode, use breakpoints_list.
+        knot_vector: Augmented B-spline knot vector. Shared across expiries in
+            joint mode. For independent mode, use knot_vector_list.
         expiries: List of ExpiryData used for calibration.
         config: CVIConfig used for calibration.
+        bspline_weights_list: Per-expiry B-spline weights for independent mode.
+            Each element may have different length.
+        breakpoints_list: Per-expiry breakpoints for independent mode.
+        knot_vector_list: Per-expiry knot vectors for independent mode.
     """
 
-    bspline_weights: np.ndarray
-    breakpoints: np.ndarray
-    knot_vector: np.ndarray
+    bspline_weights: np.ndarray | None
+    breakpoints: np.ndarray | None
+    knot_vector: np.ndarray | None
     expiries: list[ExpiryData]
     config: CVIConfig
+    bspline_weights_list: list[np.ndarray] | None = None
+    breakpoints_list: list[np.ndarray] | None = None
+    knot_vector_list: list[np.ndarray] | None = None
