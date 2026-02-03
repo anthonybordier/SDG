@@ -62,13 +62,7 @@ print()
 
 # Run calibration
 print("=== Calibration ===")
-config = CVIConfig(
-    n_knots=11,
-    z_range=8.0,
-    regularization=0.05,
-    calendar_penalty=1.0,
-    max_iterations=2,
-)
+config = CVIConfig()  # Use defaults
 print(f"Config: n_knots={config.n_knots}, z_range={config.z_range}, reg={config.regularization}")
 print(f"        calendar_penalty={config.calendar_penalty}, max_iter={config.max_iterations}")
 print()
